@@ -82,18 +82,17 @@ jobs:
             ${{ runner.os }}-npcap-sdk-
 
       # Download Npcap SDK and install dependencies (Windows)
+      - name: Install winget
+        if: runner.os == 'Windows'
+        uses: Cyberboss/install-winget@v1
+
       - name: Download and install Npcap SDK (Windows)
         if: runner.os == 'Windows' && !contains(env.LIB, 'npcap-sdk')
         run: |
           Invoke-WebRequest -Uri https://npcap.com/dist/npcap-sdk-1.13.zip -OutFile npcap-sdk.zip
           Expand-Archive -Path npcap-sdk.zip -DestinationPath $env:USERPROFILE\npcap-sdk
           Remove-Item npcap-sdk.zip
-    
-      - name: Install Winget Tool if not installed (Windows)
-        if: runner.os == 'Windows'
-        run: |
-            powershell -Command "iex (new-object net.webclient).DownloadString('https://winget.run')"
-            winget install --id DaiyuuNobori.Win10Pcap --disable-interactivity --accept-source-agreements --accept-package-agreements
+          winget install --id DaiyuuNobori.Win10Pcap --disable-interactivity --accept-source-agreements --accept-package-agreements
 
       - name: Set Library and Include Paths (Windows)
         if: runner.os == 'Windows'
