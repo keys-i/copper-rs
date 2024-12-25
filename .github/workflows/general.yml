@@ -54,21 +54,47 @@ jobs:
         run: cargo fmt --all -- --check
 
       ## System dependencies
+      # Caching apt dependencies (Linux)
+      - name: Cache apt dependencies (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: |
+            /var/cache/apt
+            /var/lib/apt/lists
+          key: ${{ runner.os }}-apt-cache-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-cache-
+
       # Install dependencies only on Linux
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libudev-dev libpcap-dev
-        
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libpcap-dev
 
-      # Those are needed for the integration tests on Windows
-      - name: Download Npcap SDK (Windows)
+      # Cache system dependencies (Windows)
+      - name: Cache Npcap SDK (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ env.USERPROFILE }}\npcap-sdk
+          key: ${{ runner.os }}-npcap-sdk-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-npcap-sdk-
+
+      # Download Npcap SDK and install dependencies (Windows)
+      - name: Download and install Npcap SDK (Windows)
         if: runner.os == 'Windows'
         run: |
-          Invoke-WebRequest -Uri https://npcap.com/dist/npcap-sdk-1.13.zip -OutFile npcap-sdk.zip
-          Expand-Archive -Path npcap-sdk.zip -DestinationPath $env:USERPROFILE\npcap-sdk
-          Remove-Item npcap-sdk.zip
+          if (!(Test-Path -Path "$env:USERPROFILE\npcap-sdk\Lib\x64")) {
+            Invoke-WebRequest -Uri https://npcap.com/dist/npcap-sdk-1.13.zip -OutFile npcap-sdk.zip
+            Expand-Archive -Path npcap-sdk.zip -DestinationPath $env:USERPROFILE\npcap-sdk
+            Remove-Item npcap-sdk.zip
+          }
           winget install --id DaiyuuNobori.Win10Pcap --disable-interactivity --accept-source-agreements --accept-package-agreements
-          
+
       - name: Set Library and Include Paths (Windows)
         if: runner.os == 'Windows'
         run: |
