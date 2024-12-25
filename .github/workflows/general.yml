@@ -19,6 +19,27 @@ jobs:
     continue-on-error: false
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache Rust Registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            C:\Users\runneradmin\.cargo\registry  # Windows path
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache Cargo index
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/git
+            C:\Users\runneradmin\.cargo\git  # Windows path
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-index-
+
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
