@@ -26,7 +26,7 @@ jobs:
           path: |
             ~/.cargo/registry
             C:\Users\runneradmin\.cargo\registry  # Windows path
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
@@ -36,7 +36,7 @@ jobs:
           path: |
             ~/.cargo/git
             C:\Users\runneradmin\.cargo\git  # Windows path
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-index-
 
@@ -45,9 +45,6 @@ jobs:
         with:
           toolchain: stable
           profile: minimal
-      - name: Install winget
-        if: runner.os == 'Windows'
-        uses: Cyberboss/install-winget@v1
 
       # Fail cheaply and early if the code is not even formatted correctly.
       - name: Cargo fmt check
@@ -62,7 +59,7 @@ jobs:
           path: |
             /var/cache/apt
             /var/lib/apt/lists
-          key: ${{ runner.os }}-apt-cache-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-apt-cache-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-apt-cache-
 
@@ -80,20 +77,23 @@ jobs:
         with:
           path: |
             ${{ env.USERPROFILE }}\npcap-sdk
-          key: ${{ runner.os }}-npcap-sdk-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-npcap-sdk-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-npcap-sdk-
 
       # Download Npcap SDK and install dependencies (Windows)
       - name: Download and install Npcap SDK (Windows)
+        if: runner.os == 'Windows' && !contains(env.LIB, 'npcap-sdk')
+        run: |
+          Invoke-WebRequest -Uri https://npcap.com/dist/npcap-sdk-1.13.zip -OutFile npcap-sdk.zip
+          Expand-Archive -Path npcap-sdk.zip -DestinationPath $env:USERPROFILE\npcap-sdk
+          Remove-Item npcap-sdk.zip
+    
+      - name: Install Winget Tool if not installed (Windows)
         if: runner.os == 'Windows'
         run: |
-          if (!(Test-Path -Path "$env:USERPROFILE\npcap-sdk\Lib\x64")) {
-            Invoke-WebRequest -Uri https://npcap.com/dist/npcap-sdk-1.13.zip -OutFile npcap-sdk.zip
-            Expand-Archive -Path npcap-sdk.zip -DestinationPath $env:USERPROFILE\npcap-sdk
-            Remove-Item npcap-sdk.zip
-          }
-          winget install --id DaiyuuNobori.Win10Pcap --disable-interactivity --accept-source-agreements --accept-package-agreements
+            powershell -Command "iex (new-object net.webclient).DownloadString('https://winget.run')"
+            winget install --id DaiyuuNobori.Win10Pcap --disable-interactivity --accept-source-agreements --accept-package-agreements
 
       - name: Set Library and Include Paths (Windows)
         if: runner.os == 'Windows'
@@ -104,24 +104,21 @@ jobs:
       ## End of system dependencies
       
       # This is also relatively quick to do, so let's fail early. 
-      - name: Run clippy in debug
+      - name: Run clippy (parallel)
         if: runner.os == 'Linux'
-        run: cargo clippy --workspace --all-targets -- --deny warnings
-
-      - name: Run clippy in release
-        if: runner.os == 'Linux'
-        run: cargo clippy --release --workspace --all-targets -- --deny warnings
+        run: |
+          cargo clippy --workspace --all-targets -- --deny warnings &
+          cargo clippy --release --workspace --all-targets -- --deny warnings &
+          wait
 
       - name: Install cargo-generate
         run: cargo install cargo-generate
 
-      - name: Build vanilla
+      - name: Build vanilla and with mocks (parallel)
         run: |
-          cargo build --workspace --features macro_debug
-
-      - name: Build with mocks
-        run: |
-          cargo build --workspace --features mock
+          cargo build --workspace --features macro_debug &
+          cargo build --workspace --features mock &
+          wait
 
       - name: Run tests
         env:
