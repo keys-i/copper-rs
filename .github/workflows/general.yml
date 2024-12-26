@@ -10,41 +10,25 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  setup:
     runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]  # macos tends to break more often.
+        os: [ macos-latest, ubuntu-latest, windows-latest ]  # macos tends to break more often.
+
     continue-on-error: false
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache Rust Registry
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            C:\Users\runneradmin\.cargo\registry  # Windows path
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: Cache Cargo index
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/git
-            C:\Users\runneradmin\.cargo\git  # Windows path
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-index-
-
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
+
+      - name: Install winget
+        if: runner.os == 'Windows'
+        uses: Cyberboss/install-winget@v1
 
       # Fail cheaply and early if the code is not even formatted correctly.
       - name: Cargo fmt check
@@ -76,18 +60,14 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ${{ env.USERPROFILE }}\npcap-sdk
+            ${{ runner.temp }}\npcap-sdk
           key: ${{ runner.os }}-npcap-sdk-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-npcap-sdk-
 
       # Download Npcap SDK and install dependencies (Windows)
-      - name: Install winget
-        if: runner.os == 'Windows'
-        uses: Cyberboss/install-winget@v1
-
       - name: Download and install Npcap SDK (Windows)
-        if: runner.os == 'Windows' && !contains(env.LIB, 'npcap-sdk')
+        if: runner.os == 'Windows'
         run: |
           Invoke-WebRequest -Uri https://npcap.com/dist/npcap-sdk-1.13.zip -OutFile npcap-sdk.zip
           Expand-Archive -Path npcap-sdk.zip -DestinationPath $env:USERPROFILE\npcap-sdk
@@ -101,8 +81,29 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "LIB=$npcapLibDir"
 
       ## End of system dependencies
-      
+
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            C:\Users\runneradmin\.cargo
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       # This is also relatively quick to do, so let's fail early. 
+
+  fmt-check:
+    runs-on: ${{ matrix.os }}
+    needs: setup
+
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cargo fmt check
+        run: cargo fmt --all -- --check
+
       - name: Run clippy (parallel)
         if: runner.os == 'Linux'
         run: |
@@ -113,12 +114,31 @@ jobs:
       - name: Install cargo-generate
         run: cargo install cargo-generate
 
-      - name: Build vanilla and with mocks (parallel)
-        run: |
-          cargo build --workspace --features macro_debug &
-          cargo build --workspace --features mock &
-          wait
+  build-with-vanilla:
+    runs-on: ${{ matrix.os }}
+    needs: [fmt-check]
 
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build with vanilla
+        run: |
+          cargo build --workspace --features macro_debug
+
+  build-with-mocks:
+    runs-on: ${{ matrix.os }}
+    needs: [fmt-check]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build with mocks
+        run: |
+          cargo build --workspace --features mock
+
+  test:
+    runs-on: ${{ matrix.os }}
+    needs: [build-with-vanilla, build-with-mocks]
+
+    steps:
       - name: Run tests
         env:
           LIB: ${{env.LIB}}
